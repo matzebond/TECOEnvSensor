@@ -7,12 +7,26 @@
     <string name="bl_now_on">Bluetooth is now on.</string>
     <string name="bl_on">Bluetooth is on.</string>
     <string name="bl_off">Bluetooth is off.</string>
-    <string name="bl_start_discovery">Seaching for Bluetooth devices.</string>
 
     <string name="ble_not_supported">Your device does not have Bluetooth Low Energy (BLE).The app will not work.</string>
     <string name="ble_supported">Your device does have Bluetooth Low Energy (BLE).</string>
 
 
-    <string name="location_turn_on">Trying to turn on Bluetooth.</string>
+    <string name="location_turn_on">Turn on location services.</string>
+
+    <string name="ble_scan_start">Scan</string>
+    <string name="ble_scan_stop">Stop scanning</string>
+
+    <string name="gatt_disconnect">Disconnect</string>
+    <string name="gatt_connected">Connected to %s</string>
+    <string name="gatt_connecting">Connecting to %s</string>
+    <string name="gatt_disconnected">Disconnected</string>
+
+    <string name="temp">Temperatur: %.2f °C</string>
+    <string name="humi">Humidity: %.2f %%</string>
+    <string name="pres">Pressure: %.1f Pa</string>
+    <string name="co2">CO2: %.2f ppm</string>
+    <string name="no2">NO2: %.2f ppm</string>
+    <string name="nh3">NH3: %.2f ppm</string>
 
 </resources>
