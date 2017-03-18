@@ -25,8 +25,8 @@
     <string name="temp">Temperatur: %.2f °C</string>
     <string name="humi">Humidity: %.2f %%</string>
     <string name="pres">Pressure: %.1f Pa</string>
-    <string name="co2">CO2: %.2f ppm</string>
-    <string name="no2">NO2: %.2f ppm</string>
-    <string name="nh3">NH3: %.2f ppm</string>
+    <string name="co2">CO²: %.4f ppm</string>
+    <string name="no2">NO²: %.4f ppm</string>
+    <string name="nh3">NH³: %.4f ppm</string>
 
 </resources>

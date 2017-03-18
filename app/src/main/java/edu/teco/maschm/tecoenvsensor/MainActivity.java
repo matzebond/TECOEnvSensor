@@ -30,6 +30,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -49,7 +50,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_ALLOW_LOCATION2 = 9234;
     private static final int REQUEST_ENABLE_LOCATION = 2131;
 
-    private static final int SCAN_PERIOD = 15000; //in ms => 10s
+    private static final int SCAN_PERIOD = 60000; //in ms => 10s
     private static final int READ_PERIOD = 1000; //in ms => 1s
     private static Timer mTimer = new Timer();
 
@@ -61,6 +62,7 @@ public class MainActivity extends Activity {
     private TextView tvCO2;
     private TextView tvNO2;
     private TextView tvNH3;
+    private CheckBox cbREST;
     private ProgressBar pbScan;
     private Button btnBleScan;
     private Button btnBleDisconnect;
@@ -90,49 +92,7 @@ public class MainActivity extends Activity {
     };
 
     // handler used vor stopping scan AND requesting ble gatt values
-    private Handler mHandler = new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-            if (mGatt == null) return;
-
-            Log.v(TAG, "tick timer");
-
-            // request all known services/characteristics
-            List<BluetoothGattService> services = mGatt.getServices();
-
-            for (BluetoothGattService service : services) {
-                if (TECO_UUIDS.ENV_SERVICE.equals(service.getUuid().toString())) {
-                    for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
-                        if (TECO_UUIDS.ENV_TEMPERATURE.equals(characteristic.getUuid().toString())) {
-                            mGatt.readCharacteristic(characteristic);
-                        }
-                        if (TECO_UUIDS.ENV_HUMIDITY.equals(characteristic.getUuid().toString())) {
-                            mGatt.readCharacteristic(characteristic);
-                        }
-                        if (TECO_UUIDS.ENV_PRESSURE.equals(characteristic.getUuid().toString())) {
-                            mGatt.readCharacteristic(characteristic);
-                        }
-                    }
-                }
-                else if (TECO_UUIDS.GAS_SERVICE.equals(service.getUuid().toString())) {
-                    for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
-                        if (TECO_UUIDS.GAS_CO2_RAW.equals(characteristic.getUuid().toString())
-                                || TECO_UUIDS.GAS_NO2_RAW.equals(characteristic.getUuid().toString())
-                                || TECO_UUIDS.GAS_NH3_RAW.equals(characteristic.getUuid().toString())) {
-                            mGatt.readCharacteristic(characteristic);
-                        }
-                    }
-                }
-                else if (TECO_UUIDS.DUST_SERVICE.equals(service.getUuid().toString())) {
-                    for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
-                        if (TECO_UUIDS.DUST_RAW.equals(characteristic.getUuid().toString())) {
-                            mGatt.readCharacteristic(characteristic);
-                        }
-                    }
-                }
-            }
-        }
-    };
+    private Handler mHandler = new Handler();
 
 
 
@@ -149,6 +109,7 @@ public class MainActivity extends Activity {
         tvCO2 = (TextView) findViewById(R.id.tv_CO2);
         tvNO2 = (TextView) findViewById(R.id.tv_NO2);
         tvNH3 = (TextView) findViewById(R.id.tv_NH3);
+        cbREST = (CheckBox) findViewById(R.id.cb_REST);
 
         pbScan = (ProgressBar) findViewById(R.id.scanProgress);
         pbScan.setVisibility(View.INVISIBLE);
@@ -167,8 +128,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 if (mGatt != null) {
                     mGatt.disconnect();
-                    mGatt.close();
-                    mGatt = null;
+                    btnBleDisconnect.setEnabled(false);
                 }
             }
         });
@@ -191,6 +151,8 @@ public class MainActivity extends Activity {
         checkBluetooth();
 
         requestLocation();
+
+        MoCIoTInfluxRestClient.createDB();
     }
 
     public void checkBluetooth() {
@@ -247,9 +209,9 @@ public class MainActivity extends Activity {
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED));
         Log.v(TAG, "registered BluetoothDevice.ACTION_FOUND receiver");
 
-        mTecoOG1 = mBluetoothAdapter.getRemoteDevice(TECO_UUIDS.TECO_OG1);
+        //mTecoOG1 = mBluetoothAdapter.getRemoteDevice(TECO_UUIDS.TECO_OG1);
 
-        mTecoDeviceList.add(mTecoOG1);
+        //mTecoDeviceList.add(mTecoOG1);
     }
 
     public void requestLocation() {
@@ -418,8 +380,9 @@ public class MainActivity extends Activity {
     private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-            String intentAction;
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
+            Log.i(TAG, "state " + status + " newState " + newState);
+
+            if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Connected to GATT server.");
 
                 runOnUiThread(new Runnable() {
@@ -502,24 +465,21 @@ public class MainActivity extends Activity {
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.ENV_SERVICE))
-                .getCharacteristic(UUID.fromString(TECO_UUIDS.ENV_TEMPERATURE)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.ENV_SERVICE), UUID.fromString(TECO_UUIDS.ENV_TEMPERATURE));
             }
         }, 0);
 
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.ENV_SERVICE))
-                        .getCharacteristic(UUID.fromString(TECO_UUIDS.ENV_HUMIDITY)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.ENV_SERVICE), UUID.fromString(TECO_UUIDS.ENV_HUMIDITY));
             }
         }, 1000);
 
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.ENV_SERVICE))
-                        .getCharacteristic(UUID.fromString(TECO_UUIDS.ENV_PRESSURE)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.ENV_SERVICE), UUID.fromString(TECO_UUIDS.ENV_PRESSURE));
             }
         }, 2000);
 
@@ -529,7 +489,7 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 //Log.v(TAG, "readCharacteristic: " + mGatt.readCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE)).getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_CO2_CALIBRATION))));
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE)).getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_CO2_CALIBRATION)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.GAS_SERVICE), UUID.fromString(TECO_UUIDS.GAS_CO2_CALIBRATION));
             }
         }, 3000);
 
@@ -537,7 +497,7 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 //Log.v(TAG, "readCharacteristic: " + mGatt.readCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE)).getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_NO2_CALIBRATION))));
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE)).getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_NO2_CALIBRATION)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.GAS_SERVICE), UUID.fromString(TECO_UUIDS.GAS_NO2_CALIBRATION));
             }
         }, 4000);
 
@@ -545,7 +505,7 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 //Log.v(TAG, "readCharacteristic: " + mGatt.readCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE)).getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_NH3_CALIBRATION))));
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE)).getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_NH3_CALIBRATION)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.GAS_SERVICE), UUID.fromString(TECO_UUIDS.GAS_NH3_CALIBRATION));
             }
         }, 5000);
 
@@ -554,29 +514,32 @@ public class MainActivity extends Activity {
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE))
-                        .getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_CO2_RAW)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.GAS_SERVICE), UUID.fromString(TECO_UUIDS.GAS_CO2_RAW));
             }
         }, 6000);
 
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE))
-                        .getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_NO2_RAW)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.GAS_SERVICE), UUID.fromString(TECO_UUIDS.GAS_NO2_RAW));
             }
         }, 7000);
 
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                notifyCharacteristic(mGatt.getService(UUID.fromString(TECO_UUIDS.GAS_SERVICE))
-                        .getCharacteristic(UUID.fromString(TECO_UUIDS.GAS_NH3_RAW)));
+                notifyCharacteristic(UUID.fromString(TECO_UUIDS.GAS_SERVICE), UUID.fromString(TECO_UUIDS.GAS_NH3_RAW));
             }
         }, 8000);
     }
 
-    private void notifyCharacteristic(BluetoothGattCharacteristic characteristic) {
+    private void notifyCharacteristic(UUID service, UUID charac) {
+        if (mGatt == null || mBluetoothAdapter == null) {
+            return;
+        }
+
+        BluetoothGattCharacteristic characteristic = mGatt.getService(service).getCharacteristic(charac);
+
         mGatt.setCharacteristicNotification(characteristic, true);
 
         BluetoothGattDescriptor descriptor = characteristic.getDescriptor(UUID.fromString(TECO_UUIDS.DESCRIPTOR));
@@ -592,16 +555,28 @@ public class MainActivity extends Activity {
             int value = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 0);
             float temp = value / 100f;
             tvTemp.setText(String.format(getString(R.string.temp), temp));
+            MoCIoTInfluxRestClient.currentEntry.temp = temp;
+            if (cbREST.isChecked()) {
+                MoCIoTInfluxRestClient.tryWrite();
+            }
         }
         else if (TECO_UUIDS.ENV_HUMIDITY.equals(characteristic.getUuid().toString())) {
             int value = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 0);
             float humi = value / 100f;
             tvHumi.setText(String.format(getString(R.string.humi), humi));
+            MoCIoTInfluxRestClient.currentEntry.humi = humi;
+            if (cbREST.isChecked()) {
+                MoCIoTInfluxRestClient.tryWrite();
+            }
         }
         else if (TECO_UUIDS.ENV_PRESSURE.equals(characteristic.getUuid().toString())) {
             int value = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT32, 0);
             float pres = value / 10f;
             tvPres.setText(String.format(getString(R.string.pres), pres));
+            MoCIoTInfluxRestClient.currentEntry.pres = pres;
+            if (cbREST.isChecked()) {
+                MoCIoTInfluxRestClient.tryWrite();
+            }
         }
         else if (TECO_UUIDS.GAS_CO2_CALIBRATION.equals(characteristic.getUuid().toString())) {
             co2Calibration = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 0);
@@ -617,27 +592,31 @@ public class MainActivity extends Activity {
             double ratio = value / (double) co2Calibration;
             double co2 = Math.pow(ratio, -1.179) * 4.385;
             tvCO2.setText(String.format(getString(R.string.co2), co2));
+            MoCIoTInfluxRestClient.currentEntry.co2 = (float)co2;
+            if (cbREST.isChecked()) {
+                MoCIoTInfluxRestClient.tryWrite();
+            }
         }
         else if (TECO_UUIDS.GAS_NO2_RAW.equals(characteristic.getUuid().toString()) && no2Calibration != 0) {
             int value = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 0);
             double ratio = value / (double) no2Calibration;
             double no2 = Math.pow(ratio, 1.007) / 6.855;
             tvNO2.setText(String.format(getString(R.string.no2), no2));
+            MoCIoTInfluxRestClient.currentEntry.no2 = (float)no2;
+            if (cbREST.isChecked()) {
+                MoCIoTInfluxRestClient.tryWrite();
+            }
         }
         else if (TECO_UUIDS.GAS_NH3_RAW.equals(characteristic.getUuid().toString()) && nh3Calibration != 0) {
             int value = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 0);
             double ratio = value / (double) nh3Calibration;
             double nh3 = Math.pow(ratio, -1.67) / 1.47;
             tvNH3.setText(String.format(getString(R.string.nh3), nh3));
+            MoCIoTInfluxRestClient.currentEntry.nh3 = (float)nh3;
+            if (cbREST.isChecked()) {
+                MoCIoTInfluxRestClient.tryWrite();
+            }
         }
-
-        /*
-        ratio_i = raw_value_i/calib_value_i
-
-        Für CO:       c = pow(ratio_1, -1.179)*4.385
-        Für NO2:    c = pow(ratio_2, 1.007)/6.855
-        Für NH3:    c = pow(ratio_0, -1.67)/1.47
-                */
     }
 
     // Create a BroadcastReceiver for ACTION_FOUND.
